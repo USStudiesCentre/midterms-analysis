@@ -1,0 +1,551 @@
+---
+title: "Graphs - key seats in play explainer"
+author: "Zoe Meers"
+date: "17 August 2018"
+output:
+  html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(pacman)
+# devtools::install_github('usstudiescentre/ussc')
+# devtools::install_github('robwhickman/ggparliament')
+p_load(cowplot, tidyverse, patchwork, USAboundaries, leaflet, sf, stringr, ussc, ggparliament, here)
+library(ggparliament)
+```
+
+# House
+
+### Cook Political Report - House ratings: https://www.cookpolitical.com/ratings/house-race-ratings
+
+
+```{r, fig.width= 8, fig.height = 5}
+# probabilistic forecast from the Cook Report
+midterm_seats <- c(150, 26, 26, 30, 10, 11, 182)
+midterm_seats_labels <- c("Solid Rep (R - 150)", "Likely Rep (R - 25, D - 1)", "Lean Rep (R - 26)", "Toss up (R - 28, D - 2)", "Lean Dem (R - 8, D - 2)", "Likely Dem (R - 3, D - 8)", "Solid Dem (D - 182)")
+midterm_seats_colours <- c("#ed1b35", "#D75C5C", "#E49292", "#F3C654", "#7BB0DC", "#3989CB", "#1c396e")
+tossups <- c(175, 1, 26, 28, 2, 8, 2, 3, 8, 182)
+tossups_binary <- c(NA, "Dem", NA, "Rep", "Dem", "Rep", NA, "Rep", NA, NA)
+
+
+# Take congress data from 2016, make amendments (i.e retirements, vacancies, etc.) as needed
+house <- ggparliament::election_data %>%
+  filter(country == "USA" &
+    house == "Representatives" &
+    year == "2016") %>%
+  mutate(seats = gsub("241", "237", seats)) %>%
+  mutate(seats = gsub("194", "193", seats)) %>%
+  mutate(seats = as.numeric(as.character(seats)))
+house[nrow(house) + 1, ] <- list("2016", "USA", "Representatives", "Vacancies", "Vacancies", 2, 0, "#cccccc")
+firstrow <- data.frame(
+  year = "2016",
+  country = "USA",
+  house = "Representatives",
+  party_long = "Vacancies",
+  party_short = "Vacancies",
+  seats = 3,
+  government = 0,
+  colour = "#cccccc"
+)
+
+house <- bind_rows(firstrow, house) %>%
+  ungroup() %>%
+  ggparliament::parliament_data(
+    election_data = house,
+    party_seats = house$seats,
+    parl_rows = 8,
+    type = "semicircle"
+  )
+```
+
+## 115th House of Representatives
+
+```{r}
+## 1115th House of Reps as of Aug. 2018
+current_house <- ggplot(data = house, aes(x, y)) +
+  geom_parliament_seats(aes(colour = party_long), size = 3) +
+  draw_totalseats(n = "D-193\nR-236", size = 10, type = "semicircle") +
+  scale_colour_manual(
+    values = house$colour,
+    limits = house$party_long
+  ) +
+  labs(
+    colour = NULL,
+    title = "115th House of Representatives",
+    subtitle = "As of August 2018",
+    caption = "Data from the Cook Political Report."
+  ) +
+  theme_ussc() +
+  geom_parliament_bar(colour, party_long) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    legend.position = "bottom",
+    axis.ticks = element_blank(),
+    plot.caption = element_text(colour = "white"),
+    axis.text = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    panel.grid = element_line(colour = "white"),
+    axis.title = element_blank(),
+    legend.text = element_text(size = 12)
+  )
+# current_house
+```
+
+
+```{r}
+congress_16_18_pred <- ggparliament::election_data %>%
+  filter(country == "USA" &
+    house == "Representatives" &
+    year == "2016") %>%
+  ggparliament::parliament_data(
+    election_data = .,
+    party_seats = .$seats,
+    parl_rows = 8,
+    type = "semicircle"
+  ) %>%
+  mutate(pred_midterms = rep(midterm_seats_labels, midterm_seats)) %>%
+  mutate(pred_colours = rep(midterm_seats_colours, midterm_seats)) %>%
+  mutate(tossups = rep(tossups_binary, tossups)) %>%
+  mutate(tossups_binary = ifelse(tossups %in% c("Rep", "Dem"), 1, 0))
+```
+
+##  2018 midterms forecast 
+
+```{r}
+## forecast parliament chart
+
+# plot forecast
+forecast <- ggplot(data = congress_16_18_pred, aes(x, y)) +
+  geom_parliament_seats(aes(colour = pred_midterms), size = 3) +
+  geom_highlight_government(tossups == "Rep", colour = "#E49292", size = 3.5) +
+  geom_highlight_government(tossups == "Dem", colour = "#7BB0DC", size = 3.5) +
+  draw_totalseats(n = 435, size = 15, type = "semicircle") +
+  scale_colour_manual(
+    values = congress_16_18_pred$pred_colours,
+    limits = congress_16_18_pred$pred_midterms
+  ) +
+  labs(
+    colour = NULL,
+    title = "2018 midterms forecast",
+    subtitle = "Seats that are likely to switch parties or are toss ups (R - 39, D - 3) are circled.",
+    caption = "Forecast data from the Cook Political Report."
+  ) +
+  theme_ussc() +
+  guides(col = guide_legend(nrow = 4)) +
+  geom_parliament_bar(pred_colours, pred_midterms) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    legend.position = "bottom",
+    axis.ticks = element_blank(),
+    axis.text = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    panel.grid = element_line(colour = "white"),
+    axis.title = element_blank(),
+    legend.text = element_text(size = 12)
+  )
+# forecast
+
+# plot_grid(current_house, forecast)
+# ggsave(last_plot(), file = "graphs/forecast-current-house.png", width = 14, height = 5.5, dpi = 300)
+```
+
+## Toss up congressional districts
+```{r}
+dailykos <- readRDS(here("seats_in_play", "data", "dailykos_midterms.RData"))
+tossups_cook1 <- read.csv(here("seats_in_play", "data", "tossups_cook.csv"),
+  stringsAsFactors = FALSE
+) %>%
+  separate(district, c("state", "cd115fp"), sep = "-") %>%
+  separate(cd115fp, c("district", "representative"), sep = ",") %>%
+  mutate(tossups = "1") %>%
+  mutate(district = as.numeric(as.character(district)))
+
+dailykos <- dailykos %>%
+  left_join(tossups_cook1, by = c("state_abbr" = "state", "district_number" = "district")) %>%
+  replace_na(list(tossups = 0))
+
+ggplot(data = dailykos) +
+  geom_vline(xintercept = 50) +
+  geom_hline(yintercept = 50) +
+  geom_point(aes(
+    x = `2016_president_trump`,
+    y = `2016_us_house_rep`,
+    colour = factor(tossups),
+    alpha = factor(tossups)
+  ),
+  size = 3
+  ) +
+  theme_ussc() +
+  scale_x_continuous(breaks = c(0, 25, 50, 75, 100), limits = c(0, 100)) +
+  scale_y_continuous(breaks = c(0, 25, 50, 75, 100)) +
+  theme(legend.position = "none") +
+  labs(
+    colour = NULL,
+    title = "Toss up congressional districts",
+    x = "Trump vote (%)",
+    y = "Republican vote, House (%)"
+  ) +
+  scale_colour_manual(values = c("#8c8c8c", "#F3C654"))
+
+# ggsave(last_plot(), file = "graphs/tossup_districts_trump_vote.png")
+```
+
+## House of Representatives majorities
+
+
+```{r, fig.height = 6}
+congress_pdiv <- read.csv(here("seats_in_play", "data", "congress_partydiv_historical.csv"), stringsAsFactors = FALSE) %>%
+  gather(party_short, seats, -Congress, -Years, -Total) %>%
+  arrange(Years) %>%
+  arrange(desc(party_short)) %>%
+  mutate(party_long = case_when(
+    party_short == "Dem" ~ "Democrat",
+    party_short == "GOP" ~ "Republican",
+    party_short == "Others" ~ "Others",
+    party_short == "Vacancies" ~ "Vacancies"
+  )) %>%
+  mutate(colour = case_when(
+    party_short == "Dem" ~ "#3333FF",
+    party_short == "GOP" ~ "#E81B23",
+    party_short == "Others" ~ "#B4B4B4",
+    party_short == "Vacancies" ~ "#E8E8E8"
+  )) %>%
+  mutate(seats = as.integer(as.character(seats))) %>%
+  mutate(government = case_when(
+    seats >= 218 ~ 1,
+    seats < 218 ~ 0
+  )) %>%
+  drop_na(seats) %>%
+  filter(Years > 1950) %>%
+  mutate(majorities = seats - 217) %>%
+  arrange(Years)
+
+congress_pdiv$majorities1 <- with(congress_pdiv, ifelse(party_short == "Dem", -majorities, majorities))
+
+congress_pdiv <- congress_pdiv %>%
+  mutate(election_year = str_sub(Years, start = 1, end = 4)) %>%
+  mutate(election_year = as.integer(election_year) - 1) %>%
+  mutate(election_year = as.character(election_year)) %>%
+  filter(government == 1)
+
+ggplot(data = congress_pdiv, aes(x = election_year, y = majorities1)) +
+  geom_bar(stat = "identity", aes(fill = ifelse(majorities1 <= 0, ussc_colours("light blue"), ussc_colours("red")))) +
+  scale_fill_ussc("light") +
+  geom_hline(yintercept = 0, linetype = 2, colour = ussc_colours("dark grey"), size = 0.5) +
+  labs(
+    fill = NULL,
+    x = NULL,
+    y = NULL,
+    title = "House of Representatives majorities, 1950 - 2016"
+  ) +
+  expand_limits(x = c(0, 36)) +
+  geom_vline(
+    xintercept = seq_along(levels(as.factor(congress_pdiv$election_year)))[c(T, rep(F, 1.5))],
+    linetype = 2,
+    colour = ussc_colours("dark grey"),
+    size = 0.2
+  ) +
+  geom_text(aes(x = 33.3, label = "Midterms year", y = -80),
+    size = 1.8,
+    family = "universLight",
+    colour = ussc_colours("dark grey")
+  ) +
+  geom_bar(stat = "identity", aes(fill = ifelse(majorities1 <= 0, ussc_colours("light blue"), ussc_colours("red")))) +
+  annotate("text", y = 0, x = 35.5, label = "Majority threshold: 218 seats", fontface = "bold") +
+  annotate("text", y = -2, x = 34.8, label = paste0(sprintf("←"), " Democratic majority"), hjust = "inward", size = 3) +
+  annotate("text", y = 2, x = 34.8, label = paste0("Republican majority ", sprintf("→")), hjust = "outward", size = 3) +
+  geom_text(aes(y = majorities1 - 2.5 * sign(majorities1), label = majorities),
+    family = "univers",
+    size = 4,
+    colour = "white"
+  ) +
+  coord_flip() +
+  theme_ussc() +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_blank(),
+    panel.grid = element_blank(),
+    panel.background = element_blank(),
+    axis.ticks = element_blank(),
+    panel.border = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  )
+
+# ggsave(last_plot(), file = "graphs/majorities_barchart.png", height = 8, width = 8)
+```
+
+## PA gerrymander map
+
+```{r}
+# grab city boundaries
+us_cities <- USAboundaries::us_cities()
+# grab congressional district boundaries
+us_cd <- USAboundaries::us_congressional()
+# grab new PA district boundaries
+pa_new <- sf::st_read(here("seats_in_play", "data", "Remedial Plan Shape Files - 006845-2", "Remedial Plan Shapefile.shp"))
+
+# We will want to note Philly's location on the map
+cities <- c("Philadelphia")
+
+# PA cities
+PA_cities <- us_cities %>%
+  filter(city %in% cities) %>%
+  filter(state_name == "Pennsylvania") %>%
+  mutate(
+    CENTROID = map(geometry, st_centroid),
+    COORDS = map(CENTROID, st_coordinates),
+    COORDS_X = map_dbl(COORDS, 1),
+    COORDS_Y = map_dbl(COORDS, 2)
+  ) %>%
+  as_tibble() %>%
+  st_as_sf()
+
+# old PA cd
+PA_cd <- us_cd %>%
+  filter(state_name == "Pennsylvania" & cd115fp == "05") %>%
+  mutate(
+    CENTROID = map(geometry, st_centroid),
+    COORDS = map(CENTROID, st_coordinates),
+    COORDS_X = map_dbl(COORDS, 1),
+    COORDS_Y = map_dbl(COORDS, 2)
+  ) %>%
+  as_tibble() %>%
+  st_as_sf()
+
+# new PA cd
+PA_cd_new <- pa_new %>%
+  filter(DISTRICT == "05") %>%
+  mutate(
+    CENTROID = map(geometry, st_centroid),
+    COORDS = map(CENTROID, st_coordinates),
+    COORDS_X = map_dbl(COORDS, 1),
+    COORDS_Y = map_dbl(COORDS, 2)
+  ) %>%
+  as_tibble() %>%
+  st_as_sf()
+
+
+
+# plot old map
+map_PA_old <- ggplot() +
+  geom_sf(data = filter(us_cd, state_name == "Pennsylvania"), fill = NA, size = 1) +
+  # fill in old district
+  geom_sf(data = filter(us_cd, state_name == "Pennsylvania" & cd115fp == "07"), fill = "#F3C654", size = 1) +
+  ggrepel::geom_text_repel(data = PA_cities, mapping = aes(COORDS_X, COORDS_Y, label = city), size = 3.5, min.segment.length = 0.5, colour = "black", direction = "both", nudge_x = 1, nudge_y = -2, segment.colour = "grey") +
+  geom_sf(data = filter(us_cities, city %in% cities & state_name == "Pennsylvania"), size = 2, colour = ussc_colours("red")) +
+  ggrepel::geom_text_repel(data = PA_cd_new, mapping = aes(COORDS_X, COORDS_Y, label = "PA - 07"), size = 3.5, min.segment.length = 0.5, colour = "black", direction = "both", nudge_y = 1, nudge_x = 2, segment.colour = "grey") +
+  theme_ussc() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5),
+    axis.ticks = element_blank(),
+    axis.text = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    panel.grid = element_line(colour = "white"),
+    axis.title = element_blank()
+  )
+map_PA_old
+
+map_PA_new <- ggplot() +
+  geom_sf(data = pa_new, fill = NA, size = 1) +
+  # fill in new district
+  geom_sf(data = filter(pa_new, DISTRICT == "05"), fill = "#3989CB", size = 1) +
+  ggrepel::geom_text_repel(data = PA_cd_new, mapping = aes(COORDS_X, COORDS_Y, label = "PA - 05"), size = 3.5, min.segment.length = 0.5, colour = "black", direction = "x", nudge_x = 1, nudge_y = -0.5, segment.colour = "grey") +
+  geom_sf(data = filter(us_cities, city %in% cities & state_name == "Pennsylvania"), size = 2, colour = ussc_colours("red")) +
+  theme_ussc() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5),
+    axis.ticks = element_blank(),
+    axis.text = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    panel.grid = element_line(colour = "white"),
+    axis.title = element_blank()
+  )
+map_PA_new
+
+map_pa <- plot_grid(map_PA_old, map_PA_new, align = "hv", labels = c("2011", "2018"), label_fontfamily = "neosanspro", label_fontface = "bold")
+map_pa
+# ggsave(last_plot(), file= ("graphs/PA_redistricting_map.png"), width = 8, height = 4)
+```
+
+
+# Senate
+
+### Cook Political Report - Senate ratings: https://www.cookpolitical.com/ratings/senate-race-ratings
+
+```{r}
+senate_data <- ggparliament::election_data %>%
+  filter(country == "USA" &
+    house == "Senate" &
+    year == "2016") %>%
+  mutate(seats = gsub("52", "51", seats)) %>%
+  mutate(seats = gsub("46", "47", seats)) %>%
+  mutate(seats = as.numeric(as.character(seats))) %>%
+  ggparliament::parliament_data(
+    election_data = .,
+    party_seats = .$seats,
+    parl_rows = 4,
+    type = "semicircle"
+  )
+
+
+midterm_seats <- c(3, 2, 1, 3, 65, 5, 1, 6, 14)
+midterm_seats_labels <- c("Solid Rep", "Likely Rep", "Lean Rep", "Toss up", "Not running", "Toss up", "Lean Dem", "Likely Dem", "Solid Dem")
+midterm_seats_colours <- c("#ed1b35", "#D75C5C", "#E49292", "#F3C654", "#cccccc", "#F3C654", "#7BB0DC", "#3989CB", "#1c396e")
+
+senate_data <- senate_data %>%
+  mutate(midterms_predictions = rep(midterm_seats_labels, midterm_seats)) %>%
+  mutate(midterms_colours = rep(midterm_seats_colours, midterm_seats)) %>%
+  mutate(running = ifelse(midterms_colours != "#cccccc", 1, 0))
+
+
+
+senate_forecast <- ggplot(data = senate_data, aes(x, y)) +
+  geom_point(aes(colour = midterms_predictions), size = 4) +
+  geom_highlight_government(party_short == "GOP" & running == 0, colour = "#ed1b35") +
+  geom_highlight_government(party_short == "Dem" & running == 0, colour = "#1c396e") +
+  geom_highlight_government(party_short == "Ind" & running == 0, colour = "gray") +
+  draw_totalseats(n = 35, size = 12, type = "semicircle") +
+  scale_colour_manual(
+    values = senate_data$midterms_colours,
+    limits = senate_data$midterms_predictions
+  ) +
+  labs(
+    colour = NULL,
+    title = "2018 midterms forecast",
+    caption = "Forecast data from the Cook Political Report."
+  ) +
+  theme_ussc() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "bottom",
+    axis.ticks = element_blank(),
+    axis.text = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    panel.grid = element_line(colour = "white"),
+    axis.title = element_blank(),
+    legend.text = element_text(size = 11)
+  )
+senate_forecast
+
+# ggsave(senate_forecast, file = 'graphs/senate_forecast.jpg', width = 5, height = 4)
+```
+
+# Governor
+
+### Cook Political Report - Governor ratings: https://www.cookpolitical.com/ratings/governor-race-ratings
+
+
+```{r}
+tossup_states <- c("CT", "AK", "FL", "IA", "KS", "ME", "MI", "NV", "OH")
+solid_d <- c("CA", "HI", "NY")
+likely_d <- c("PA", "RI")
+lean_d <- c("CO", "MN", "OR", "IL", "NM")
+lean_r <- c("GA", "WI")
+likely_r <- c("AZ", "NH", "SC", "TN", "MD")
+solid_r <- c("AL", "AR", "ID", "MA", "NE", "OK", "SD", "TX", "WY", "VT")
+lean_d_tossup <- c("FL", "IA", "KS", "ME", "MI", "NV", "OH", "IL", "NM")
+
+
+
+df3 <- data.frame(
+  person = as.numeric(c(NA, NA, NA, NA, NA, NA, NA)),
+  variable = c("Solid Republican", "Likely Republican", "Lean Republican", "Toss up", "Lean Democrat", "Likely Democrat", "Solid Democrat"),
+  value = as.numeric(c(NA, NA, NA, NA, NA, NA, NA))
+)
+
+# convert fifty_states to an sf data frame
+(sf_fifty <- st_as_sf(fiftystater::fifty_states, coords = c("long", "lat")) %>%
+  # convert sets of points to polygons
+  group_by(id, piece) %>%
+  summarize(do_union = FALSE) %>%
+  st_cast("POLYGON") %>%
+  # convert polygons to multipolygons for states with discontinuous regions
+  group_by(id) %>%
+  summarize())
+st_crs(sf_fifty) <- 4326
+
+sf_fifty <- sf_fifty %>%
+  mutate(id = stringr::str_to_title(id)) %>%
+  inner_join(state_codes, by = c("id" = "state_name")) %>%
+  mutate(midterms_predictions = ifelse(state_abbr %in% tossup_states, "Toss up", NA)) %>%
+  mutate(midterms_predictions = ifelse(state_abbr %in% solid_d, "Solid Dem", midterms_predictions)) %>%
+  mutate(midterms_predictions = ifelse(state_abbr %in% likely_d, "Likely Dem", midterms_predictions)) %>%
+  mutate(midterms_predictions = ifelse(state_abbr %in% lean_d, "Lean Dem", midterms_predictions)) %>%
+  mutate(midterms_predictions = ifelse(state_abbr %in% solid_r, "Solid Rep", midterms_predictions)) %>%
+  mutate(midterms_predictions = ifelse(state_abbr %in% likely_r, "Likely Rep", midterms_predictions)) %>%
+  mutate(midterms_predictions = ifelse(state_abbr %in% lean_r, "Lean Rep", midterms_predictions)) %>%
+  mutate(midterms_colours = case_when(
+    state_abbr %in% tossup_states ~ "#F3C654",
+    state_abbr %in% solid_r ~ "#ed1b35",
+    state_abbr %in% likely_r ~ "#D75C5C",
+    state_abbr %in% lean_r ~ "#E49292",
+    state_abbr %in% solid_d ~ "#1c396e",
+    state_abbr %in% likely_d ~ "#3989CB",
+    state_abbr %in% lean_d ~ "#7BB0DC",
+    is.na(midterms_predictions) ~ "#F2F2F2"
+  )) %>%
+  mutate(midterms_predictions = ifelse(is.na(midterms_predictions), "Not running", midterms_predictions))
+
+dat <- sf_fifty %>%
+  select(5:6) %>%
+  count(midterms_predictions, midterms_colours)
+dat <- as.data.frame(dat)
+dat <- dat %>%
+  select(-c(4)) %>%
+  arrange(match(midterms_predictions, c("Solid Rep", "Likely Rep", "Lean Rep", "Toss up", "Not running", "Lean Dem", "Likely Dem", "Solid Dem")))
+data_df <- parliament_data(
+  election_data = dat,
+  parl_rows = 9,
+  party_seats = dat$n,
+  type = "classroom"
+)
+
+gov_map <- ggplot() +
+  geom_sf(data = sf_fifty, aes(fill = midterms_predictions, alpha = ifelse(midterms_predictions == "Not running", 0.8, NA)), colour = ussc_colours("black"), size = 0.4, show.legend = FALSE) +
+  geom_sf(data = filter(sf_fifty, state_abbr %in% lean_d_tossup), fill = NA, colour = ussc_colours("black"), size = 1.2, show.legend = FALSE) +
+  geom_point(data = df3, aes(x = person, y = value, color = variable), size = 3) +
+  theme_ussc() +
+  labs(
+    fill = NULL,
+    colour = NULL,
+    title = "Governor races: 2018 midterms forecast",
+    subtitle = "States led by Republican governors that are toss ups or leaning Democrat are emphasised."
+  ) +
+  scale_fill_manual(
+    values = sf_fifty$midterms_colours,
+    limits = sf_fifty$midterms_predictions
+  ) +
+  scale_color_manual(
+    values = c("#ed1b35", "#D75C5C", "#E49292", "#F3C654", "#F2F2F2", "#7BB0DC", "#3989CB", "#1c396e"),
+    limits = c("Solid Rep", "Likely Rep", "Lean Rep", "Toss up", "Not running", "Lean Dem", "Likely Dem", "Solid Dem")
+  ) +
+  theme(
+    legend.position = "top",
+    legend.key = element_blank(),
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    axis.ticks = element_blank(),
+    axis.text = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    panel.grid = element_line(colour = "white"),
+    axis.title = element_blank(),
+    legend.text = element_text(size = 12)
+  )
+
+gov_map
+
+# ggsave(gov_map, file = "graphs/governor_map.jpg", width = 8, height = 6)
+```
+

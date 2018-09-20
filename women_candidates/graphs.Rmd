@@ -1,0 +1,335 @@
+---
+title: "Graphs - women candidates explainer"
+author: "Zoe Meers"
+date: "17 August 2018"
+output:
+  html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(pacman)
+# devtools::install_github('usstudiescentre/ussc')
+# devtools::install_github('robwhickman/ggparliament')
+p_load(ussc, cowplot, tidyverse, patchwork, stringr, ggparliament, here)
+library(ggparliament)
+# here()
+```
+
+# Time series, party ID
+
+** Note: the data comes from the Centre for Responsive Politics. Their numbers include those who started to run for elected office but, for whatever reason, did not end up on the ballot (primaries or general).
+
+```{r}
+label <- read.csv(here("women_candidates", "data", "candidates_midterms.csv")) %>%
+  filter(Cycle == "2018")
+graph_genderpartyelection_us <- read.csv(here("women_candidates", "data", "candidates_midterms.csv")) %>%
+  ggplot() +
+  geom_line(aes(Cycle, Female.Candidates, colour = party), size = 1.5) +
+  geom_point(aes(Cycle, Female.Candidates, colour = party), size = 2.5) +
+  theme_ussc() +
+  directlabels::geom_dl(
+    data = label, aes(Cycle, Female.Candidates,
+      label = paste(party, "(", Female.Candidates, ")"),
+      colour = party
+    ),
+    method = list(directlabels::dl.trans(x = x - 3, y = y + .3),
+      "last.points",
+      cex = 1
+    )
+  ) +
+  scale_colour_ussc("main") +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank()
+  ) +
+  scale_x_continuous(breaks = seq(1994, 2018, 2)) +
+  labs(
+    title = "American women running for House of Representatives",
+    y = "", colour = "", x = "",
+    caption = "Source: Centre for Responsive Politics"
+  )
+graph_genderpartyelection_us
+# ggsave(graph_genderpartyelection_us, file="graphs/women_running_count.png", dpi = 300, width = 7, height = 7)
+```
+
+## Women in the 115th House of Representatives
+
+```{r}
+# list of current legislators
+current_legislators <- read.csv(here("women_candidates", "data", "legislators-current.csv"))
+current_rep <- current_legislators %>%
+  filter(type == "rep")
+
+# ideal point estimates data
+plotData <- read.csv(here("women_candidates", "data", "plotData.csv"))
+plotData1 <- plotData %>%
+  mutate(legisNames = stringr::str_trim(stringr::str_to_title(gsub("\\s*\\([^\\)]+\\)", "", legisNames)))) %>%
+  left_join(current_rep, by = c("legisNames" = "last_name")) %>%
+  filter(gender == "F")
+
+## ideal point estimates plot
+ideal <- ggplot() +
+  geom_point(data = plotData, aes(x, y), color = "grey") +
+  geom_point(data = plotData1, aes(x, y, color = party.x), size = 2) +
+  labs(
+    color = NULL,
+    subtitle = "The ideology of congresswomen by vote for President Trump in their district",
+    x = "Congressional district Trump vote (%)",
+    y = NULL
+  ) +
+  scale_colour_ussc() +
+  annotate("text", y = -0.7, x = 0, label = paste0(sprintf("↓"), " More liberal"), hjust = "inward", size = 4) +
+  annotate("text", y = 1.4, x = 0, label = paste0(sprintf("↑"), " More conservative"), hjust = "inward", size = 4) +
+  theme_ussc() +
+  theme(
+    axis.text.y = element_blank(),
+    legend.position = "none",
+    panel.border = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank()
+  )
+ideal
+
+# ggparliament graph
+
+
+women_in_congress <- c(
+  1, 0, 0, 1,
+  1, 0, 0, 1,
+  1, 0, 0, 1,
+  1, 0, 0, 1,
+  1, 0, 0, 1,
+  1, 0, 0, 1
+)
+number_of_women_men <- c(
+  21, 178, 178, 58,
+  17, 161, 195, 62,
+  24, 218, 138, 55,
+  20, 214, 137, 64,
+  23, 224, 122, 66,
+  23, 218, 133, 61
+)
+
+congress_pdiv <- read.csv(here("women_candidates", "data", "congress_partydiv_historical.csv"), stringsAsFactors = FALSE)
+congress_pdiv <- congress_pdiv %>%
+  gather(party_short, seats, -Congress, -Years, -Total) %>%
+  arrange(Years) %>%
+  arrange(desc(party_short)) %>%
+  mutate(party_long = case_when(
+    party_short == "Dem" ~ "Democrat",
+    party_short == "GOP" ~ "Republican",
+    party_short == "Others" ~ "Others",
+    party_short == "Vacancies" ~ "Vacancies"
+  )) %>%
+  mutate(colour = case_when(
+    party_short == "Dem" ~ "#3333FF",
+    party_short == "GOP" ~ "#E81B23",
+    party_short == "Others" ~ "#B4B4B4",
+    party_short == "Vacancies" ~ "#E8E8E8"
+  )) %>%
+  mutate(seats = as.integer(as.character(seats))) %>%
+  mutate(government = case_when(
+    seats >= 218 ~ 1,
+    seats < 218 ~ 0
+  )) %>%
+  drop_na(seats)
+
+congress_pdiv_110 <- congress_pdiv %>%
+  filter(Years > 2006)
+
+congress_pdiv_gender_long <- congress_pdiv_110 %>%
+  split(.$Congress) %>%
+  map(~parliament_data(
+    election_data = .,
+    party_seats = .$seats,
+    parl_rows = 8,
+    type = "semicircle"
+  )) %>%
+  bind_rows() %>%
+  mutate(women = rep(women_in_congress, number_of_women_men))
+
+
+house <- ggparliament::election_data %>%
+  filter(country == "USA" &
+    house == "Representatives" &
+    year == "2016") %>%
+  mutate(seats = gsub("241", "237", seats)) %>%
+  mutate(seats = gsub("194", "193", seats)) %>%
+  mutate(seats = as.numeric(as.character(seats)))
+house[nrow(house) + 1, ] <- list("2016", "USA", "Representatives", "Vacancies", "Vacancies", 2, 0, "#cccccc")
+firstrow <- data.frame(
+  year = "2016",
+  country = "USA",
+  house = "Representatives",
+  party_long = "Vacancies",
+  party_short = "Vacancies",
+  seats = 3,
+  government = 0,
+  colour = "#cccccc"
+)
+house <- bind_rows(firstrow, house)
+
+# write.csv(house, file = "house_arrange.csv")
+house <- house %>% ungroup()
+
+house <- ggparliament::parliament_data(
+  election_data = house,
+  party_seats = house$seats,
+  parl_rows = 8,
+  type = "semicircle"
+)
+house$women <- rep(
+  c(0, 1, 0, 0, 1, 0),
+  c(3, 23, 215, 131, 61, 2)
+)
+current_house <- ggplot(data = house, aes(x, y)) +
+  geom_parliament_seats(aes(colour = party_long), size = 2.3) +
+  scale_colour_manual(
+    values = c("#8c8c8c", "#ed1b35", "#1c396e"),
+    limits = c("Vacancies", "Republican", "Democratic")
+  ) +
+  geom_emphasize_parliamentarians(women == 1) +
+  labs(
+    colour = NULL,
+    title = "Women in the House of Representatives"
+  ) +
+  annotate("text",
+    x = 0, y = 0.5, label = "Sixty-one Democrats \nin the House are women. \nOnly twenty three elected \nRepublicans are women.",
+    family = "univers", size = 4
+  ) +
+  theme_ussc() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    legend.position = "bottom",
+    axis.ticks = element_blank(),
+    plot.caption = element_text(colour = "white"),
+    axis.text = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    panel.grid = element_line(colour = "white"),
+    axis.title = element_blank(),
+    legend.text = element_text(size = 12)
+  ) +
+  draw_majoritythreshold(n = 218, label = FALSE, type = "semicircle", linecolour = "black")
+current_house
+
+
+combined <- plot_grid(current_house, ideal, nrow = 1)
+
+#ggsave(combined, file = "graphs/ggparliament_ideal.jpg", width = 12.5, height = 4.17)
+```
+
+## House of Representatives midterms candidate demographics
+
+```{r}
+dat <- read.csv(here("women_candidates", "data", "women_men_crp.csv"), check.names = FALSE) %>%
+  mutate(cycle_short = str_sub(cycle, 3:4))
+a <- ggplot() +
+  geom_bar(data = dat, aes(cycle, candidates, fill = party), stat = "identity") +
+  facet_grid(~gender) +
+  theme_ussc() +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    axis.ticks = element_blank(),
+    legend.position = "top",
+    axis.text.x = element_text(size = 10),
+    panel.border = element_blank()
+  ) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(1994, 2018, 4)) +
+  scale_fill_ussc() +
+  labs(
+    fill = NULL,
+    y = "Number of candidates",
+    title = "House of Representatives midterm candidate demographics",
+    subtitle = "Total number of candidates including those who dropped out early:",
+    x = NULL
+  )
+
+b <- ggplot() +
+  geom_bar(data = dat, aes(cycle, nominated, fill = party), stat = "identity") +
+  facet_grid(~gender) +
+  theme_ussc() +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text.x = element_text(size = 10),
+    legend.position = "none",
+    panel.border = element_blank()
+  ) +
+  scale_x_continuous(breaks = seq(1994, 2018, 4), labels = abbreviate) +
+  scale_fill_ussc() +
+  labs(
+    fill = NULL,
+    caption = "Source: Centre for Responsive Politics",
+    y = NULL,
+    subtitle = "\n \nCandidates who won their primary election:",
+    x = "Election year"
+  )
+
+library(patchwork)
+combined <- a + b + plot_layout(ncol = 1)
+#ggsave(combined, file = "graphs/candidate_demographics.png", dpi = 300, height = 6, width = 8)
+```
+
+## How are women fairing in toss up districts?
+
+
+```{r}
+# data from Cook Political Report
+# create data frame
+tossup_women <- data.frame(
+  rating = c("Solid Democrat congressional district", "Solid Democrat congressional district", "Likely Democrat congressional district", "Likely Democrat congressional district", "Lean Democrat congressional district", "Lean Democrat congressional district", "Toss up congressional district", "Toss up congressional district", "Lean Republican congressional district", "Lean Republican congressional district", "Likely Republican congressional district", "Likely Republican congressional district", "Solid Republican congressional district", "Solid Republican congressional district"),
+  party = c("Democrat", "Republican", "Democrat", "Republican", "Democrat", "Republican", "Democrat", "Republican", "Democrat", "Republican", "Democrat", "Republican", "Democrat", "Republican"),
+  seats = c(64, 23, 3, 3, 7, 4, 12, 4, 15, 8, 14, 1, 67, 8)
+) %>% uncount(seats)
+
+tossup_women$ratings_1 <- factor(tossup_women$rating, levels = c("Solid Democrat congressional district", "Likely Democrat congressional district", "Lean Democrat congressional district", "Toss up congressional district", "Lean Republican congressional district", "Likely Republican congressional district", "Solid Republican congressional district"))
+```
+
+```{r}
+ggplot(data = tossup_women, aes(x = party, fill = party), colour = "white") +
+  geom_dotplot(binwidth = 0.5) +
+  labs(
+    colour = NULL,
+    y = NULL,
+    x = NULL,
+    title = "How are women faring in toss up congressional districts?",
+    caption = "Toss up data from the Cook Political Report"
+  ) +
+  coord_flip() +
+  guides(fill = guide_legend(
+    title = "Party of female candidate:", title.position = "top",
+    keywidth = 2,
+    title.theme = element_text(
+      size = 12,
+      colour = "black",
+      angle = 0
+    )
+  )) +
+  scale_fill_ussc() +
+  facet_wrap(ratings_1 ~ ., ncol = 1) +
+  theme_ussc() +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "top",
+    axis.ticks = element_blank(),
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_blank(),
+    panel.border = element_blank(),
+    axis.title.y = element_blank()
+  )
+
+#ggsave(last_plot(), file = "graphs/tossup_women.png", dpi = 300, height = 7, width = 8.5)
+```
+
+
