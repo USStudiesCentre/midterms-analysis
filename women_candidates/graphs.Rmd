@@ -96,62 +96,6 @@ ideal
 # ggparliament graph
 
 
-women_in_congress <- c(
-  1, 0, 0, 1,
-  1, 0, 0, 1,
-  1, 0, 0, 1,
-  1, 0, 0, 1,
-  1, 0, 0, 1,
-  1, 0, 0, 1
-)
-number_of_women_men <- c(
-  21, 178, 178, 58,
-  17, 161, 195, 62,
-  24, 218, 138, 55,
-  20, 214, 137, 64,
-  23, 224, 122, 66,
-  23, 218, 133, 61
-)
-
-congress_pdiv <- read.csv(here("women_candidates", "data", "congress_partydiv_historical.csv"), stringsAsFactors = FALSE)
-congress_pdiv <- congress_pdiv %>%
-  gather(party_short, seats, -Congress, -Years, -Total) %>%
-  arrange(Years) %>%
-  arrange(desc(party_short)) %>%
-  mutate(party_long = case_when(
-    party_short == "Dem" ~ "Democrat",
-    party_short == "GOP" ~ "Republican",
-    party_short == "Others" ~ "Others",
-    party_short == "Vacancies" ~ "Vacancies"
-  )) %>%
-  mutate(colour = case_when(
-    party_short == "Dem" ~ "#3333FF",
-    party_short == "GOP" ~ "#E81B23",
-    party_short == "Others" ~ "#B4B4B4",
-    party_short == "Vacancies" ~ "#E8E8E8"
-  )) %>%
-  mutate(seats = as.integer(as.character(seats))) %>%
-  mutate(government = case_when(
-    seats >= 218 ~ 1,
-    seats < 218 ~ 0
-  )) %>%
-  drop_na(seats)
-
-congress_pdiv_110 <- congress_pdiv %>%
-  filter(Years > 2006)
-
-congress_pdiv_gender_long <- congress_pdiv_110 %>%
-  split(.$Congress) %>%
-  map(~parliament_data(
-    election_data = .,
-    party_seats = .$seats,
-    parl_rows = 8,
-    type = "semicircle"
-  )) %>%
-  bind_rows() %>%
-  mutate(women = rep(women_in_congress, number_of_women_men))
-
-
 house <- ggparliament::election_data %>%
   filter(country == "USA" &
     house == "Representatives" &
@@ -172,7 +116,6 @@ firstrow <- data.frame(
 )
 house <- bind_rows(firstrow, house)
 
-# write.csv(house, file = "house_arrange.csv")
 house <- house %>% ungroup()
 
 house <- ggparliament::parliament_data(
